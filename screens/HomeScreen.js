@@ -1,49 +1,80 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { saveVideoBlob, deleteVideoBlob, getVideoBlob } from '../utils/videoDB';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Modal, TextInput, FlatList,
+  Modal, TextInput, FlatList, Image,
   ActivityIndicator, SafeAreaView,
 } from 'react-native';
 
-function VideoThumb({ videoId, style }) {
-  const [url, setUrl] = useState(null);
-  const urlRef = useRef(null);
+function captureVideoThumbnail(blob) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement('video');
+    video.playsInline = true;
+    video.muted = true;
+    video.preload = 'metadata';
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = Math.min(1, video.duration * 0.1);
+    }, { once: true });
+    video.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200;
+        canvas.height = 200;
+        const ctx = canvas.getContext('2d');
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const size = Math.min(vw, vh);
+        ctx.drawImage(video, (vw - size) / 2, (vh - size) / 2, size, size, 0, 0, 200, 200);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } catch {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      }
+    }, { once: true });
+    video.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(null); }, { once: true });
+    video.src = url;
+  });
+}
+
+// 單張卡片，沒有縮圖時自動從 IndexedDB 補上
+function VideoCard({ item, onPress, onLongPress, onThumbnailReady }) {
+  const [thumb, setThumb] = useState(item.thumbnail);
 
   useEffect(() => {
-    getVideoBlob(videoId).then(blob => {
-      if (blob) {
-        const objUrl = URL.createObjectURL(blob);
-        urlRef.current = objUrl;
-        setUrl(objUrl);
+    if (thumb) return;
+    getVideoBlob(item.id).then(async blob => {
+      if (!blob) return;
+      const dataUrl = await captureVideoThumbnail(blob);
+      if (dataUrl) {
+        setThumb(dataUrl);
+        onThumbnailReady(item.id, dataUrl);
       }
     });
-    return () => {
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-    };
-  }, [videoId]);
-
-  const player = useVideoPlayer(url, p => {
-    p.loop = true;
-    p.muted = true;
-  });
-
-  useEffect(() => {
-    if (url && player) player.play();
-  }, [url]);
-
-  if (!url) return <View style={[style, styles.thumbnailPlaceholder]} />;
+  }, [item.id]);
 
   return (
-    <VideoView
-      player={player}
-      style={style}
-      contentFit="cover"
-      nativeControls={false}
-      allowsFullscreen={false}
-    />
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={500}
+    >
+      {thumb ? (
+        <Image source={{ uri: thumb }} style={styles.thumbnail} />
+      ) : (
+        <View style={[styles.thumbnail, styles.thumbnailPlaceholder]} />
+      )}
+      <View style={styles.cardInfo}>
+        <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
+        <Text style={styles.cardAuthor}>{item.author}</Text>
+        <View style={styles.tagRow}>
+          <View style={styles.tag}><Text style={styles.tagText}>待剪輯</Text></View>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -51,7 +82,7 @@ const RAPIDAPI_KEY = '87f82569eamsh557c88add7b216dp1edbc2jsn1ca09d91cb6f';
 const RAPIDAPI_HOST = 'instagram-post-reels-stories-downloader-api.p.rapidapi.com';
 
 export default function HomeScreen({ navigation }) {
-  const { videos, addVideo, deleteVideo, updateVideoTitle } = useApp();
+  const { videos, addVideo, deleteVideo, updateVideoTitle, updateVideoThumbnail } = useApp();
   const [modalVisible, setModalVisible] = useState(false);
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -97,15 +128,10 @@ export default function HomeScreen({ navigation }) {
       const blob = await videoRes.blob();
       await saveVideoBlob(videoId, blob);
 
-      const newVideo = {
-        id: videoId,
-        title: autoTitle,
-        author: '',
-        thumbnail: null,
-        igUrl: url.trim(),
-      };
+      // 從下載的 blob 擷取縮圖
+      const thumbnail = await captureVideoThumbnail(blob);
 
-      addVideo(newVideo);
+      addVideo({ id: videoId, title: autoTitle, author: '', thumbnail, igUrl: url.trim() });
       setUrl('');
       setModalVisible(false);
     } catch (e) {
@@ -141,21 +167,12 @@ export default function HomeScreen({ navigation }) {
             keyExtractor={item => item.id}
             contentContainerStyle={{ padding: 16 }}
             renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.card}
+              <VideoCard
+                item={item}
                 onPress={() => navigation.navigate('ClipEditor', { video: item })}
                 onLongPress={() => setSelectedVideo(item)}
-                delayLongPress={500}
-              >
-                <VideoThumb videoId={item.id} style={styles.thumbnail} />
-                <View style={styles.cardInfo}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-                  <Text style={styles.cardAuthor}>{item.author}</Text>
-                  <View style={styles.tagRow}>
-                    <View style={styles.tag}><Text style={styles.tagText}>待剪輯</Text></View>
-                  </View>
-                </View>
-              </TouchableOpacity>
+                onThumbnailReady={updateVideoThumbnail}
+              />
             )}
           />
         )}

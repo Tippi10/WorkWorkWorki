@@ -36,6 +36,10 @@ export function AppProvider({ children }) {
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, title } : v));
   }
 
+  function updateVideoThumbnail(videoId, thumbnail) {
+    setVideos(prev => prev.map(v => v.id === videoId ? { ...v, thumbnail } : v));
+  }
+
   function addClip(clip) {
     setClips(prev => [...prev, clip]);
   }
@@ -65,7 +69,7 @@ export function AppProvider({ children }) {
   }
 
   return (
-    <AppContext.Provider value={{ videos, addVideo, deleteVideo, updateVideoTitle, clips, addClip, deleteClip, categories, addCategory, renameCategory, deleteCategory, updateClipCategory }}>
+    <AppContext.Provider value={{ videos, addVideo, deleteVideo, updateVideoTitle, updateVideoThumbnail, clips, addClip, deleteClip, categories, addCategory, renameCategory, deleteCategory, updateClipCategory }}>
       {children}
     </AppContext.Provider>
   );
