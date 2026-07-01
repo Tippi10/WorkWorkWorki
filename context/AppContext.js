@@ -1,11 +1,28 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
 const AppContext = createContext(null);
 
+function load(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function save(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
 export function AppProvider({ children }) {
-  const [videos, setVideos] = useState([]);
-  const [clips, setClips] = useState([]);
-  const [categories, setCategories] = useState(['核心', '下肢', '上肢', '有氧']);
+  const [videos, setVideos] = useState(() => load('wwk_videos', []));
+  const [clips, setClips] = useState(() => load('wwk_clips', []));
+  const [categories, setCategories] = useState(() => load('wwk_categories', ['核心', '下肢', '上肢', '有氧']));
+
+  useEffect(() => { save('wwk_videos', videos); }, [videos]);
+  useEffect(() => { save('wwk_clips', clips); }, [clips]);
+  useEffect(() => { save('wwk_categories', categories); }, [categories]);
 
   function addVideo(video) {
     setVideos(prev => [video, ...prev]);
