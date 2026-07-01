@@ -15,50 +15,28 @@
     <style>
       * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
       :root { color-scheme: dark; }
-      html {
-        width: 100%;
-        height: 100%;
-        height: -webkit-fill-available;
-        background-color: #0d0d0d;
-      }
-      body {
-        width: 100%;
-        height: 100%;
-        min-height: -webkit-fill-available;
-        background-color: #0d0d0d;
-        overflow: hidden;
-      }
-      #root {
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        display: flex;
-        flex-direction: column;
-        background-color: #0d0d0d;
-        overflow: hidden;
-      }
+      html { width: 100%; height: 100%; height: -webkit-fill-available; background-color: #0d0d0d; }
+      body { width: 100%; height: 100%; min-height: -webkit-fill-available; background-color: #0d0d0d; overflow: hidden; }
+      #root { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; background-color: #0d0d0d; overflow: hidden; }
       video { -webkit-playsinline: true; }
     </style>
     <script>
       document.addEventListener('DOMContentLoaded', function () {
         function fixVideos() {
           document.querySelectorAll('video').forEach(function (v) {
-            v.setAttribute('playsinline', '');
-            v.setAttribute('webkit-playsinline', '');
-            v.playsInline = true;
+            v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.playsInline = true;
           });
         }
         fixVideos();
         new MutationObserver(fixVideos).observe(document.body, { childList: true, subtree: true });
         document.addEventListener('play', fixVideos, true);
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/service-worker.js');
-        }
+        if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
       });
     </script>
   <link rel="icon" href="/favicon.ico"/></head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-  <script src="/_expo/static/js/web/index-4cb3191bb1b379531a7f7a6bb9698999.js" defer></script>
+  <script src="/_expo/static/js/web/index-6a813b81b1aecc589ceea869cd1ea9fe.js" defer></script>
 </body>
 </html>
