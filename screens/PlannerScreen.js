@@ -1,11 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, Modal, FlatList, SafeAreaView, PanResponder,
+  ScrollView, Modal, FlatList, SafeAreaView,
+  PanResponder, Animated, Dimensions, TextInput,
 } from 'react-native';
 import { useApp } from '../context/AppContext';
 
 const ITEM_H = 68;
+const SCREEN_W = Dimensions.get('window').width;
+const ITEM_W = SCREEN_W - 32;
+const SWIPE_THRESHOLD = ITEM_W / 3;
 const DAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
 function getMonday(date) {
@@ -36,32 +40,91 @@ function sameDay(a, b) {
   return toKey(a) === toKey(b);
 }
 
-function DragHandle({ onStart, onMove, onEnd, style }) {
+// Drag handle — uses gs.dy (relative to gesture start) instead of absolute pageY
+function DragHandle({ onStart, onMove, onEnd }) {
   const cbs = useRef({ onStart, onMove, onEnd });
   useEffect(() => { cbs.current = { onStart, onMove, onEnd }; });
 
   const pan = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: e => cbs.current.onStart(e.nativeEvent.pageY),
-    onPanResponderMove: e => cbs.current.onMove(e.nativeEvent.pageY),
-    onPanResponderRelease: e => cbs.current.onEnd(e.nativeEvent.pageY),
+    onShouldBlockNativeResponder: () => true,
+    onPanResponderGrant: () => cbs.current.onStart(),
+    onPanResponderMove: (e, gs) => cbs.current.onMove(gs.dy),
+    onPanResponderRelease: (e, gs) => cbs.current.onEnd(gs.dy),
     onPanResponderTerminate: () => cbs.current.onEnd(null),
   })).current;
 
   return (
-    <View {...pan.panHandlers} style={style}>
+    <View {...pan.panHandlers} style={styles.handle}>
       <Text style={styles.handleIcon}>≡</Text>
     </View>
   );
 }
 
-function DraggablePlanList({ clipIds, allClips, onReorder, onRemove }) {
+// Single plan item with swipe-to-delete
+function PlanItem({ id, clip, isActive, onRemove, onEditSets, onDragStart, onDragMove, onDragEnd }) {
+  const swipeX = useRef(new Animated.Value(0)).current;
+
+  const swipePan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (e, gs) =>
+      Math.abs(gs.dx) > Math.abs(gs.dy) && Math.abs(gs.dx) > 10,
+    onPanResponderMove: (e, gs) => {
+      if (gs.dx < 0) swipeX.setValue(Math.max(gs.dx, -ITEM_W));
+    },
+    onPanResponderRelease: (e, gs) => {
+      if (gs.dx < -SWIPE_THRESHOLD) {
+        Animated.timing(swipeX, { toValue: -ITEM_W, duration: 150, useNativeDriver: false })
+          .start(() => onRemove(id));
+      } else {
+        Animated.spring(swipeX, { toValue: 0, friction: 8, useNativeDriver: false }).start();
+      }
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(swipeX, { toValue: 0, friction: 8, useNativeDriver: false }).start();
+    },
+  })).current;
+
+  const bgOpacity = swipeX.interpolate({
+    inputRange: [-SWIPE_THRESHOLD, -10, 0],
+    outputRange: [1, 0.4, 0],
+    extrapolate: 'clamp',
+  });
+
+  return (
+    <View style={styles.itemWrapper}>
+      {/* Red delete background */}
+      <Animated.View style={[styles.deleteBack, { opacity: bgOpacity }]}>
+        <Text style={styles.deleteTrash}>🗑️</Text>
+      </Animated.View>
+
+      {/* Sliding item */}
+      <Animated.View
+        style={[styles.planItem, isActive && styles.planItemActive, { transform: [{ translateX: swipeX }] }]}
+        {...swipePan.panHandlers}
+      >
+        <DragHandle onStart={onDragStart} onMove={onDragMove} onEnd={onDragEnd} />
+        <View style={styles.planItemInfo}>
+          <Text style={styles.planItemName} numberOfLines={1}>{clip?.name ?? '未知動作'}</Text>
+          {clip?.category ? <Text style={styles.planItemCat}>{clip.category}</Text> : null}
+        </View>
+        <TouchableOpacity style={styles.setsBtn} onPress={() => onEditSets(id)}>
+          <Text style={styles.setsText}>
+            {clip?.sets ?? '—'}組 × {clip?.reps ?? '—'}次
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
+// Draggable list — dy approach: targetIdx = startIndex + round(dy / ITEM_H)
+function DraggablePlanList({ clipIds, allClips, onReorder, onRemove, onEditSets }) {
   const [liveOrder, setLiveOrder] = useState([...clipIds]);
   const [activeId, setActiveId] = useState(null);
   const liveRef = useRef(liveOrder);
-  const dragState = useRef({ activeId: null, containerTop: 0 });
-  const containerRef = useRef(null);
+  const dragState = useRef({ activeId: null, startIndex: -1 });
 
   useEffect(() => {
     if (!dragState.current.activeId) setLiveOrder([...clipIds]);
@@ -69,35 +132,29 @@ function DraggablePlanList({ clipIds, allClips, onReorder, onRemove }) {
 
   useEffect(() => { liveRef.current = liveOrder; }, [liveOrder]);
 
-  function measureContainer() {
-    containerRef.current?.measure((x, y, w, h, px, py) => {
-      dragState.current.containerTop = py;
-    });
-  }
-
-  function handleStart(id, pageY) {
-    dragState.current.activeId = id;
+  function handleDragStart(idx) {
+    const id = liveRef.current[idx];
+    dragState.current = { activeId: id, startIndex: idx };
     setActiveId(id);
-    measureContainer();
   }
 
-  function handleMove(pageY) {
-    const { activeId: aid, containerTop } = dragState.current;
+  function handleDragMove(dy) {
+    const { activeId: aid, startIndex } = dragState.current;
     if (!aid) return;
-    const relY = pageY - containerTop;
-    const targetIdx = Math.max(0, Math.min(Math.floor(relY / ITEM_H), liveRef.current.length - 1));
+    const deltaIdx = Math.round(dy / ITEM_H);
+    const targetIdx = Math.max(0, Math.min(startIndex + deltaIdx, liveRef.current.length - 1));
     const curIdx = liveRef.current.indexOf(aid);
-    if (targetIdx === curIdx) return;
+    if (curIdx === -1 || targetIdx === curIdx) return;
     const next = [...liveRef.current];
     next.splice(curIdx, 1);
     next.splice(targetIdx, 0, aid);
     setLiveOrder(next);
   }
 
-  function handleEnd(pageY) {
-    if (pageY !== null) handleMove(pageY);
+  function handleDragEnd(dy) {
+    if (dy !== null) handleDragMove(dy);
     onReorder([...liveRef.current]);
-    dragState.current.activeId = null;
+    dragState.current = { activeId: null, startIndex: -1 };
     setActiveId(null);
   }
 
@@ -111,42 +168,51 @@ function DraggablePlanList({ clipIds, allClips, onReorder, onRemove }) {
   }
 
   return (
-    <View ref={containerRef} onLayout={measureContainer}>
-      {liveOrder.map(id => {
-        const clip = allClips.find(c => c.id === id);
-        const isActive = id === activeId;
-        return (
-          <View key={id} style={[styles.planItem, isActive && styles.planItemActive]}>
-            <DragHandle
-              onStart={pageY => handleStart(id, pageY)}
-              onMove={handleMove}
-              onEnd={handleEnd}
-              style={styles.handle}
-            />
-            <View style={styles.planItemInfo}>
-              <Text style={styles.planItemName} numberOfLines={1}>{clip?.name ?? '未知動作'}</Text>
-              {clip?.category ? <Text style={styles.planItemCat}>{clip.category}</Text> : null}
-            </View>
-            <TouchableOpacity onPress={() => onRemove(id)} style={styles.removeBtn}>
-              <Text style={styles.removeIcon}>✕</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      })}
+    <View>
+      {liveOrder.map((id, idx) => (
+        <PlanItem
+          key={id}
+          id={id}
+          clip={allClips.find(c => c.id === id)}
+          isActive={id === activeId}
+          onRemove={onRemove}
+          onEditSets={onEditSets}
+          onDragStart={() => handleDragStart(idx)}
+          onDragMove={handleDragMove}
+          onDragEnd={handleDragEnd}
+        />
+      ))}
     </View>
   );
 }
 
 export default function PlannerScreen() {
-  const { clips, planner, addToDay, removeFromDay, reorderDay } = useApp();
+  const { clips, planner, addToDay, removeFromDay, reorderDay, updateClipSets } = useApp();
 
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState(today);
   const [addModal, setAddModal] = useState(false);
+  const [setsModal, setSetsModal] = useState(null);
+  const [setsInput, setSetsInput] = useState('');
+  const [repsInput, setRepsInput] = useState('');
 
   const weekDays = getWeekDays(today);
   const selectedKey = toKey(selectedDate);
   const dayClipIds = planner[selectedKey] ?? [];
+
+  function openSetsModal(clipId) {
+    const clip = clips.find(c => c.id === clipId);
+    setSetsInput(clip?.sets?.toString() ?? '');
+    setRepsInput(clip?.reps?.toString() ?? '');
+    setSetsModal(clipId);
+  }
+
+  function handleSaveSets() {
+    const sets = parseInt(setsInput);
+    const reps = parseInt(repsInput);
+    updateClipSets(setsModal, isNaN(reps) ? null : reps, isNaN(sets) ? null : sets);
+    setSetsModal(null);
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -155,7 +221,7 @@ export default function PlannerScreen() {
         <Text style={styles.headerTitle}>Planner</Text>
       </View>
 
-      {/* 週曆小方格 */}
+      {/* 週曆 */}
       <View style={styles.weekRow}>
         {weekDays.map((day, i) => {
           const key = toKey(day);
@@ -168,22 +234,16 @@ export default function PlannerScreen() {
               style={[styles.dayCell, isSelected && styles.dayCellSelected]}
               onPress={() => setSelectedDate(day)}
             >
-              <Text style={[styles.dayLabel, isSelected && styles.dayLabelSel]}>
-                {DAY_LABELS[i]}
-              </Text>
-              <Text style={[styles.dayNum, isSelected && styles.dayNumSel]}>
-                {day.getDate()}
-              </Text>
-              {isToday && (
-                <View style={[styles.dot, isSelected ? styles.dotSelToday : styles.dotToday]} />
-              )}
+              <Text style={[styles.dayLabel, isSelected && styles.dayLabelSel]}>{DAY_LABELS[i]}</Text>
+              <Text style={[styles.dayNum, isSelected && styles.dayNumSel]}>{day.getDate()}</Text>
+              {isToday && <View style={[styles.dot, isSelected ? styles.dotSelToday : styles.dotToday]} />}
               {!isToday && hasPlan && <View style={styles.dot} />}
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* 選中日期標題 */}
+      {/* 日期標題 */}
       <View style={styles.dayHeader}>
         <Text style={styles.dayTitle}>
           {selectedDate.getMonth() + 1}/{selectedDate.getDate()}
@@ -192,13 +252,14 @@ export default function PlannerScreen() {
         <Text style={styles.dayCount}>{dayClipIds.length} 個動作</Text>
       </View>
 
-      {/* 可拖排的動作列表 */}
+      {/* 動作清單 */}
       <ScrollView style={styles.list} contentContainerStyle={{ paddingBottom: 100 }}>
         <DraggablePlanList
           clipIds={dayClipIds}
           allClips={clips}
           onReorder={ids => reorderDay(selectedKey, ids)}
           onRemove={id => removeFromDay(selectedKey, id)}
+          onEditSets={openSetsModal}
         />
       </ScrollView>
 
@@ -249,6 +310,51 @@ export default function PlannerScreen() {
         </View>
       </Modal>
 
+      {/* 次數/組數 Modal */}
+      <Modal visible={setsModal != null} transparent animationType="fade">
+        <TouchableOpacity style={styles.setsOverlay} onPress={() => setSetsModal(null)} activeOpacity={1}>
+          <TouchableOpacity style={styles.setsBox} activeOpacity={1} onPress={() => {}}>
+            <Text style={styles.setsTitle} numberOfLines={1}>
+              {clips.find(c => c.id === setsModal)?.name ?? '動作設定'}
+            </Text>
+            <View style={styles.setsRow}>
+              <View style={styles.setsGroup}>
+                <Text style={styles.setsGroupLabel}>組數</Text>
+                <TextInput
+                  style={styles.setsInput}
+                  value={setsInput}
+                  onChangeText={setSetsInput}
+                  keyboardType="number-pad"
+                  placeholder="—"
+                  placeholderTextColor="#555"
+                  maxLength={2}
+                  textAlign="center"
+                />
+                <Text style={styles.setsUnit}>組</Text>
+              </View>
+              <Text style={styles.setsCross}>×</Text>
+              <View style={styles.setsGroup}>
+                <Text style={styles.setsGroupLabel}>次數</Text>
+                <TextInput
+                  style={styles.setsInput}
+                  value={repsInput}
+                  onChangeText={setRepsInput}
+                  keyboardType="number-pad"
+                  placeholder="—"
+                  placeholderTextColor="#555"
+                  maxLength={3}
+                  textAlign="center"
+                />
+                <Text style={styles.setsUnit}>次</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.setsConfirm} onPress={handleSaveSets}>
+              <Text style={styles.setsConfirmText}>儲存</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -266,9 +372,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', paddingHorizontal: 6, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: '#1e1e1e',
   },
-  dayCell: {
-    flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10,
-  },
+  dayCell: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 10 },
   dayCellSelected: { backgroundColor: '#a78bfa' },
   dayLabel: { color: '#666', fontSize: 11, marginBottom: 4 },
   dayLabelSel: { color: '#fff' },
@@ -292,10 +396,22 @@ const styles = StyleSheet.create({
   emptyDayText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   emptyDaySub: { color: '#555', fontSize: 13, marginTop: 6 },
 
+  itemWrapper: {
+    marginHorizontal: 16, marginTop: 10,
+    height: ITEM_H, borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  deleteBack: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: '#dc2626',
+    justifyContent: 'center', alignItems: 'flex-end',
+    paddingRight: 20,
+  },
+  deleteTrash: { fontSize: 24 },
   planItem: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#1a1a1a', marginHorizontal: 16,
-    marginTop: 10, borderRadius: 12, height: ITEM_H,
+    backgroundColor: '#1a1a1a', height: ITEM_H,
   },
   planItemActive: {
     backgroundColor: '#252525',
@@ -306,8 +422,12 @@ const styles = StyleSheet.create({
   planItemInfo: { flex: 1, paddingVertical: 12 },
   planItemName: { color: '#fff', fontSize: 14, fontWeight: '600' },
   planItemCat: { color: '#a78bfa', fontSize: 11, marginTop: 3 },
-  removeBtn: { width: 44, height: ITEM_H, justifyContent: 'center', alignItems: 'center' },
-  removeIcon: { color: '#444', fontSize: 16 },
+
+  setsBtn: {
+    paddingHorizontal: 14, paddingVertical: 10,
+    alignItems: 'center', justifyContent: 'center', minWidth: 80,
+  },
+  setsText: { color: '#888', fontSize: 12, textAlign: 'center' },
 
   addBtn: {
     position: 'absolute', bottom: 20, left: 16, right: 16,
@@ -331,7 +451,6 @@ const styles = StyleSheet.create({
   modalEmpty: { alignItems: 'center', padding: 40 },
   modalEmptyText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   modalEmptySub: { color: '#555', fontSize: 13, marginTop: 6 },
-
   clipOption: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 14,
@@ -342,4 +461,34 @@ const styles = StyleSheet.create({
   clipName: { flex: 1, color: '#fff', fontSize: 15 },
   clipCat: { color: '#888', fontSize: 11, marginRight: 8 },
   addedMark: { color: '#a78bfa', fontSize: 16, fontWeight: '700' },
+
+  setsOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  setsBox: {
+    backgroundColor: '#1e1e1e', borderRadius: 20,
+    padding: 24, width: SCREEN_W - 64,
+  },
+  setsTitle: {
+    color: '#fff', fontSize: 15, fontWeight: '700',
+    marginBottom: 20, textAlign: 'center',
+  },
+  setsRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
+  },
+  setsGroup: { alignItems: 'center', flex: 1 },
+  setsGroupLabel: { color: '#888', fontSize: 12, marginBottom: 8 },
+  setsInput: {
+    backgroundColor: '#2a2a2a', color: '#fff',
+    borderRadius: 10, width: '100%',
+    paddingVertical: 12, fontSize: 24, fontWeight: '700',
+  },
+  setsUnit: { color: '#666', fontSize: 13, marginTop: 6 },
+  setsCross: { color: '#555', fontSize: 20, paddingTop: 20 },
+  setsConfirm: {
+    backgroundColor: '#a78bfa', borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center', marginTop: 20,
+  },
+  setsConfirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
