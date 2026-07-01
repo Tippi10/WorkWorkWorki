@@ -25,6 +25,17 @@
         var observer = new MutationObserver(fixVideos);
         observer.observe(document.body, { childList: true, subtree: true });
         document.addEventListener('play', fixVideos, true);
+
+        // Reset zoom after keyboard dismisses
+        document.addEventListener('blur', function (e) {
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            var meta = document.querySelector('meta[name=viewport]');
+            meta.setAttribute('content', 'width=device-width, initial-scale=1, shrink-to-fit=no, maximum-scale=1');
+            setTimeout(function () {
+              meta.setAttribute('content', 'width=device-width, initial-scale=1, shrink-to-fit=no');
+            }, 300);
+          }
+        }, true);
       });
     </script>
   </head>

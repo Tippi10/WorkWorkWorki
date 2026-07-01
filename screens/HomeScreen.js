@@ -48,7 +48,8 @@ export default function HomeScreen({ navigation }) {
       setUrl('');
       setModalVisible(false);
     } catch (e) {
-      Alert.alert('錯誤', '無法取得影片，請確認連結是否正確');
+      console.error('Import error:', e);
+      alert('錯誤：' + (e?.message ?? '無法取得影片'));
     } finally {
       setLoading(false);
     }
