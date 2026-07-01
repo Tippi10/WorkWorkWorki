@@ -76,12 +76,13 @@ function ProgressBar({ label, start, target, current, unit }) {
   const progress = Math.max(0, Math.min(rawProgress, 1));
   const fillW = barW * progress;
   const runnerLeft = fillW - 14;
+  const fmt = v => (v != null ? Number(v).toFixed(1) : '—');
 
   return (
     <View style={styles.progressWrapper}>
       <Text style={styles.progressLabel}>{label}</Text>
       <View style={styles.progressTrackRow}>
-        <Text style={styles.progressEndLabel}>{hasGoal ? `${start}${unit}` : '—'}</Text>
+        <Text style={styles.progressEndLabel}>{hasGoal ? `${fmt(start)}${unit}` : '—'}</Text>
         <View
           style={styles.progressTrack}
           onLayout={e => setBarW(e.nativeEvent.layout.width)}
@@ -99,11 +100,11 @@ function ProgressBar({ label, start, target, current, unit }) {
             </Text>
           )}
         </View>
-        <Text style={styles.progressEndLabel}>{hasGoal ? `${target}${unit}` : '—'}</Text>
+        <Text style={styles.progressEndLabel}>{hasGoal ? `${fmt(target)}${unit}` : '—'}</Text>
       </View>
       {hasData && hasGoal && (
         <Text style={styles.progressCurrentLabel}>
-          目前 {current}{unit}　進度 {Math.round(progress * 100)}%
+          目前 {fmt(current)}{unit}　進度 {Math.round(progress * 100)}%
         </Text>
       )}
     </View>
@@ -298,7 +299,7 @@ export default function ProfileScreen() {
               style={styles.input}
               placeholder="例：68.5"
               placeholderTextColor="#555"
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
               value={weightInput}
               onChangeText={setWeightInput}
             />
@@ -307,7 +308,7 @@ export default function ProfileScreen() {
               style={styles.input}
               placeholder="例：18.2"
               placeholderTextColor="#555"
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
               value={bodyFatInput}
               onChangeText={setBodyFatInput}
             />
@@ -335,7 +336,7 @@ export default function ProfileScreen() {
                 style={styles.input}
                 placeholder="例：75.0"
                 placeholderTextColor="#555"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 value={gStartW}
                 onChangeText={setGStartW}
               />
@@ -344,7 +345,7 @@ export default function ProfileScreen() {
                 style={styles.input}
                 placeholder="例：65.0"
                 placeholderTextColor="#555"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 value={gTargetW}
                 onChangeText={setGTargetW}
               />
@@ -353,7 +354,7 @@ export default function ProfileScreen() {
                 style={styles.input}
                 placeholder="例：25.0"
                 placeholderTextColor="#555"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 value={gStartBF}
                 onChangeText={setGStartBF}
               />
@@ -362,7 +363,7 @@ export default function ProfileScreen() {
                 style={styles.input}
                 placeholder="例：15.0"
                 placeholderTextColor="#555"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 value={gTargetBF}
                 onChangeText={setGTargetBF}
               />
