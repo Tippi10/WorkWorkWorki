@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, Modal, TextInput, SafeAreaView, Dimensions,
+  ScrollView, Modal, TextInput, SafeAreaView,
 } from 'react-native';
 import { useApp } from '../context/AppContext';
 
-const { width } = Dimensions.get('window');
 const DAY_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
 function toKey(date) {
-  return date.toISOString().split('T')[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function loadBodyStats() {
@@ -19,10 +21,16 @@ function loadBodyStats() {
 function saveBodyStats(s) {
   try { localStorage.setItem('wwk_body_stats', JSON.stringify(s)); } catch {}
 }
+function loadBodyGoals() {
+  try { return JSON.parse(localStorage.getItem('wwk_body_goals') || 'null'); } catch { return null; }
+}
+function saveBodyGoals(g) {
+  try { localStorage.setItem('wwk_body_goals', JSON.stringify(g)); } catch {}
+}
 
 function buildCalendar(year, month) {
   const firstDay = new Date(year, month, 1).getDay();
-  const startOffset = firstDay === 0 ? 6 : firstDay - 1; // Mon = 0
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const grid = [];
   let day = 1;
@@ -43,14 +51,14 @@ function calcStreak(workoutKeys) {
   const set = new Set(workoutKeys);
   const todayKey = toKey(new Date());
   let streak = 0;
-  let d = new Date();
+  const d = new Date();
   while (true) {
     const k = toKey(d);
     if (set.has(k)) {
       streak++;
       d.setDate(d.getDate() - 1);
     } else if (k === todayKey) {
-      d.setDate(d.getDate() - 1); // allow today to be empty
+      d.setDate(d.getDate() - 1);
     } else {
       break;
     }
@@ -58,58 +66,46 @@ function calcStreak(workoutKeys) {
   return streak;
 }
 
-// 折線段：用絕對定位 + 旋轉畫斜線
-function LineSegment({ x1, y1, x2, y2, color }) {
-  const dx = x2 - x1, dy = y2 - y1;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-  return (
-    <View style={{
-      position: 'absolute',
-      width: len, height: 2,
-      backgroundColor: color,
-      left: (x1 + x2) / 2 - len / 2,
-      top: (y1 + y2) / 2 - 1,
-      transform: [{ rotate: `${angle}deg` }],
-    }} />
-  );
-}
+function ProgressBar({ label, start, target, current, unit }) {
+  const [barW, setBarW] = useState(0);
 
-function MiniChart({ entries, valueKey, color, unit, chartW }) {
-  const PAD = 12;
-  const H = 110;
-  const data = entries.filter(e => e[valueKey] != null);
-  if (data.length < 2) {
-    return (
-      <View style={[styles.chartEmpty, { height: H }]}>
-        <Text style={styles.chartEmptyText}>記錄 2 筆以上才會顯示折線</Text>
+  const hasGoal = start != null && target != null;
+  const hasData = current != null;
+  const range = hasGoal ? (target - start) || 1 : 1;
+  const rawProgress = hasGoal && hasData ? (current - start) / range : 0;
+  const progress = Math.max(0, Math.min(rawProgress, 1));
+  const fillW = barW * progress;
+  const runnerLeft = fillW - 14;
+
+  return (
+    <View style={styles.progressWrapper}>
+      <Text style={styles.progressLabel}>{label}</Text>
+      <View style={styles.progressTrackRow}>
+        <Text style={styles.progressEndLabel}>{hasGoal ? `${start}${unit}` : '—'}</Text>
+        <View
+          style={styles.progressTrack}
+          onLayout={e => setBarW(e.nativeEvent.layout.width)}
+        >
+          {hasGoal && hasData && barW > 0 ? (
+            <>
+              <View style={[styles.progressFill, { width: Math.max(0, fillW) }]}>
+                <View style={styles.progressFillShine} />
+              </View>
+              <Text style={[styles.progressRunner, { left: Math.max(0, runnerLeft) }]}>🏃‍➡️</Text>
+            </>
+          ) : (
+            <Text style={styles.progressEmptyText}>
+              {!hasGoal ? '設定目標後顯示' : '尚未記錄數據'}
+            </Text>
+          )}
+        </View>
+        <Text style={styles.progressEndLabel}>{hasGoal ? `${target}${unit}` : '—'}</Text>
       </View>
-    );
-  }
-  const vals = data.map(d => d[valueKey]);
-  const minV = Math.min(...vals), maxV = Math.max(...vals);
-  const range = maxV - minV || 1;
-  const toX = i => PAD + (i / (data.length - 1)) * (chartW - PAD * 2);
-  const toY = v => PAD + (1 - (v - minV) / range) * (H - PAD * 2);
-  const pts = data.map((d, i) => ({ x: toX(i), y: toY(d[valueKey]) }));
-
-  return (
-    <View style={{ height: H, position: 'relative' }}>
-      {pts.map((p, i) => i === 0 ? null : (
-        <LineSegment key={i} x1={pts[i-1].x} y1={pts[i-1].y} x2={p.x} y2={p.y} color={color} />
-      ))}
-      {pts.map((p, i) => (
-        <View key={`d${i}`} style={{
-          position: 'absolute', width: 7, height: 7, borderRadius: 4,
-          backgroundColor: color, left: p.x - 3.5, top: p.y - 3.5,
-        }} />
-      ))}
-      <Text style={[styles.chartAxisLabel, { position: 'absolute', right: 0, top: PAD - 8 }]}>
-        {maxV.toFixed(1)}{unit}
-      </Text>
-      <Text style={[styles.chartAxisLabel, { position: 'absolute', right: 0, bottom: PAD - 8 }]}>
-        {minV.toFixed(1)}{unit}
-      </Text>
+      {hasData && hasGoal && (
+        <Text style={styles.progressCurrentLabel}>
+          目前 {current}{unit}　進度 {Math.round(progress * 100)}%
+        </Text>
+      )}
     </View>
   );
 }
@@ -122,10 +118,17 @@ export default function ProfileScreen() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [bodyStats, setBodyStats] = useState(loadBodyStats);
+  const [bodyGoals, setBodyGoals] = useState(loadBodyGoals);
+
   const [logModal, setLogModal] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [bodyFatInput, setBodyFatInput] = useState('');
-  const [chartW, setChartW] = useState(width - 64);
+
+  const [goalModal, setGoalModal] = useState(false);
+  const [gStartW, setGStartW] = useState('');
+  const [gTargetW, setGTargetW] = useState('');
+  const [gStartBF, setGStartBF] = useState('');
+  const [gTargetBF, setGTargetBF] = useState('');
 
   const workoutDays = Object.entries(planner).filter(([, ids]) => ids.length > 0);
   const workoutKeySet = new Set(workoutDays.map(([k]) => k));
@@ -134,6 +137,10 @@ export default function ProfileScreen() {
   const savedCount = clips.length;
 
   const grid = buildCalendar(viewYear, viewMonth);
+
+  const latestStats = bodyStats.length > 0 ? bodyStats[bodyStats.length - 1] : null;
+  const currentWeight = latestStats?.weight ?? null;
+  const currentBodyFat = latestStats?.bodyFat ?? null;
 
   function prevMonth() {
     if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
@@ -159,18 +166,38 @@ export default function ProfileScreen() {
     setLogModal(false);
   }
 
-  const recent = bodyStats.slice(-20);
+  function openGoalModal() {
+    setGStartW(bodyGoals?.startWeight?.toString() ?? '');
+    setGTargetW(bodyGoals?.targetWeight?.toString() ?? '');
+    setGStartBF(bodyGoals?.startBodyFat?.toString() ?? '');
+    setGTargetBF(bodyGoals?.targetBodyFat?.toString() ?? '');
+    setGoalModal(true);
+  }
+
+  function handleSaveGoals() {
+    const sw = parseFloat(gStartW);
+    const tw = parseFloat(gTargetW);
+    const sbf = parseFloat(gStartBF);
+    const tbf = parseFloat(gTargetBF);
+    const goals = {
+      startWeight: isNaN(sw) ? null : sw,
+      targetWeight: isNaN(tw) ? null : tw,
+      startBodyFat: isNaN(sbf) ? null : sbf,
+      targetBodyFat: isNaN(tbf) ? null : tbf,
+    };
+    setBodyGoals(goals);
+    saveBodyGoals(goals);
+    setGoalModal(false);
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
 
-        {/* 標題 */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Profile</Text>
         </View>
 
-        {/* 統計三格 */}
         <View style={styles.statsRow}>
           {[
             { label: 'Workouts', value: totalWorkouts, icon: '🏋️' },
@@ -185,9 +212,7 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* 月曆 */}
         <View style={styles.calCard}>
-          {/* 月份導航 */}
           <View style={styles.calNav}>
             <TouchableOpacity onPress={prevMonth} style={styles.calNavBtn}>
               <Text style={styles.calNavArrow}>‹</Text>
@@ -200,14 +225,12 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 星期標頭 */}
           <View style={styles.calWeekHeader}>
             {DAY_HEADERS.map(d => (
               <Text key={d} style={styles.calWeekLabel}>{d}</Text>
             ))}
           </View>
 
-          {/* 日期格 */}
           {grid.map((row, wi) => (
             <View key={wi} style={styles.calRow}>
               {row.map((day, di) => {
@@ -230,21 +253,36 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* 體重體脂 */}
-        <View style={styles.chartSection}>
-          <View style={styles.chartSectionHeader}>
-            <Text style={styles.chartSectionTitle}>身體數據</Text>
-            <TouchableOpacity style={styles.logBtn} onPress={() => setLogModal(true)}>
-              <Text style={styles.logBtnText}>＋ 記錄今日</Text>
-            </TouchableOpacity>
+        <View style={styles.bodySection}>
+          <View style={styles.bodySectionHeader}>
+            <Text style={styles.bodySectionTitle}>身體數據</Text>
+            <View style={styles.bodyBtns}>
+              <TouchableOpacity style={styles.goalBtn} onPress={openGoalModal}>
+                <Text style={styles.goalBtnText}>設定目標</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.logBtn} onPress={() => setLogModal(true)}>
+                <Text style={styles.logBtnText}>＋ 記錄今日</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View onLayout={e => setChartW(e.nativeEvent.layout.width)}>
-            <Text style={styles.chartLabel}>體重（kg）</Text>
-            <MiniChart entries={recent} valueKey="weight" color="#a78bfa" unit=" kg" chartW={chartW} />
-            <Text style={[styles.chartLabel, { marginTop: 20 }]}>體脂率（%）</Text>
-            <MiniChart entries={recent} valueKey="bodyFat" color="#34d399" unit="%" chartW={chartW} />
-          </View>
+          <ProgressBar
+            label="體重"
+            start={bodyGoals?.startWeight ?? null}
+            target={bodyGoals?.targetWeight ?? null}
+            current={currentWeight}
+            unit=" kg"
+          />
+
+          <View style={styles.divider} />
+
+          <ProgressBar
+            label="體脂率"
+            start={bodyGoals?.startBodyFat ?? null}
+            target={bodyGoals?.targetBodyFat ?? null}
+            current={currentBodyFat}
+            unit="%"
+          />
         </View>
 
       </ScrollView>
@@ -282,6 +320,62 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* 目標 Modal */}
+      <Modal visible={goalModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <ScrollView>
+            <View style={[styles.modalBox, { marginTop: 'auto' }]}>
+              <Text style={styles.modalTitle}>設定目標</Text>
+              <Text style={styles.modalDate}>設定後進度條會追蹤你的變化</Text>
+              <Text style={styles.inputLabel}>最初體重（kg）</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例：75.0"
+                placeholderTextColor="#555"
+                keyboardType="numeric"
+                value={gStartW}
+                onChangeText={setGStartW}
+              />
+              <Text style={styles.inputLabel}>目標體重（kg）</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例：65.0"
+                placeholderTextColor="#555"
+                keyboardType="numeric"
+                value={gTargetW}
+                onChangeText={setGTargetW}
+              />
+              <Text style={styles.inputLabel}>最初體脂（%）</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例：25.0"
+                placeholderTextColor="#555"
+                keyboardType="numeric"
+                value={gStartBF}
+                onChangeText={setGStartBF}
+              />
+              <Text style={styles.inputLabel}>目標體脂（%）</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="例：15.0"
+                placeholderTextColor="#555"
+                keyboardType="numeric"
+                value={gTargetBF}
+                onChangeText={setGTargetBF}
+              />
+              <View style={styles.modalBtns}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setGoalModal(false)}>
+                  <Text style={styles.cancelText}>取消</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.confirmBtn} onPress={handleSaveGoals}>
+                  <Text style={styles.confirmText}>儲存</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -325,20 +419,50 @@ const styles = StyleSheet.create({
   calDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#a78bfa', marginTop: 1 },
   calDotToday: { backgroundColor: '#fff' },
 
-  chartSection: {
+  bodySection: {
     backgroundColor: '#1a1a1a', borderRadius: 16,
     marginHorizontal: 16, padding: 16, marginBottom: 16,
   },
-  chartSectionHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16,
+  bodySectionHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20,
   },
-  chartSectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  logBtn: { backgroundColor: '#2a2a2a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  logBtnText: { color: '#a78bfa', fontSize: 13, fontWeight: '600' },
-  chartLabel: { color: '#888', fontSize: 12, marginBottom: 8 },
-  chartEmpty: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#111', borderRadius: 8 },
-  chartEmptyText: { color: '#444', fontSize: 12 },
-  chartAxisLabel: { color: '#555', fontSize: 10 },
+  bodySectionTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  bodyBtns: { flexDirection: 'row', gap: 8 },
+  goalBtn: { backgroundColor: '#2a2a2a', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  goalBtnText: { color: '#888', fontSize: 12, fontWeight: '600' },
+  logBtn: { backgroundColor: '#2a2a2a', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  logBtnText: { color: '#a78bfa', fontSize: 12, fontWeight: '600' },
+
+  progressWrapper: { marginBottom: 4 },
+  progressLabel: { color: '#888', fontSize: 12, marginBottom: 8 },
+  progressTrackRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  progressEndLabel: { color: '#666', fontSize: 11, minWidth: 42, textAlign: 'center' },
+  progressTrack: {
+    flex: 1, height: 28, backgroundColor: '#2a2a2a', borderRadius: 14,
+    justifyContent: 'center', alignItems: 'center',
+    position: 'relative',
+    overflow: 'visible',
+  },
+  progressFill: {
+    position: 'absolute', left: 0, top: 0, bottom: 0,
+    backgroundColor: '#dc2626', borderRadius: 14,
+    overflow: 'hidden',
+  },
+  progressFillShine: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    height: '45%',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderTopLeftRadius: 14, borderTopRightRadius: 14,
+  },
+  progressRunner: {
+    position: 'absolute', fontSize: 18, top: -1,
+  },
+  progressEmptyText: { color: '#444', fontSize: 11 },
+  progressCurrentLabel: {
+    color: '#ef4444', fontSize: 11, marginTop: 5, textAlign: 'center',
+  },
+
+  divider: { height: 1, backgroundColor: '#2a2a2a', marginVertical: 16 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalBox: {
