@@ -1,42 +1,50 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { saveVideoBlob, deleteVideoBlob } from '../utils/videoDB';
+import { saveVideoBlob, deleteVideoBlob, getVideoBlob } from '../utils/videoDB';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Modal, TextInput, FlatList, Image,
+  Modal, TextInput, FlatList,
   ActivityIndicator, SafeAreaView,
 } from 'react-native';
 
-function captureVideoThumbnail(blob) {
-  return new Promise(resolve => {
-    const url = URL.createObjectURL(blob);
-    const video = document.createElement('video');
-    video.playsInline = true;
-    video.muted = true;
-    video.preload = 'metadata';
-    video.addEventListener('loadedmetadata', () => {
-      video.currentTime = Math.min(1, video.duration * 0.1);
-    }, { once: true });
-    video.addEventListener('seeked', () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 200;
-        canvas.height = 200;
-        const ctx = canvas.getContext('2d');
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const size = Math.min(vw, vh);
-        ctx.drawImage(video, (vw - size) / 2, (vh - size) / 2, size, size, 0, 0, 200, 200);
-        URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      } catch {
-        URL.revokeObjectURL(url);
-        resolve(null);
+function VideoThumb({ videoId, style }) {
+  const [url, setUrl] = useState(null);
+  const urlRef = useRef(null);
+
+  useEffect(() => {
+    getVideoBlob(videoId).then(blob => {
+      if (blob) {
+        const objUrl = URL.createObjectURL(blob);
+        urlRef.current = objUrl;
+        setUrl(objUrl);
       }
-    }, { once: true });
-    video.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(null); }, { once: true });
-    video.src = url;
+    });
+    return () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    };
+  }, [videoId]);
+
+  const player = useVideoPlayer(url, p => {
+    p.loop = true;
+    p.muted = true;
   });
+
+  useEffect(() => {
+    if (url && player) player.play();
+  }, [url]);
+
+  if (!url) return <View style={[style, styles.thumbnailPlaceholder]} />;
+
+  return (
+    <VideoView
+      player={player}
+      style={style}
+      contentFit="cover"
+      nativeControls={false}
+      allowsFullscreen={false}
+    />
+  );
 }
 
 const RAPIDAPI_KEY = '87f82569eamsh557c88add7b216dp1edbc2jsn1ca09d91cb6f';
@@ -81,24 +89,19 @@ export default function HomeScreen({ navigation }) {
 
       if (!videoMedia?.url) throw new Error('找不到影片連結');
 
-      const thumbUrl = results.find(m => m.type?.includes('image'))?.url ?? videoMedia.thumb ?? null;
       const videoId = Date.now().toString();
       const autoTitle = `動作 ${videos.length + 1}`;
 
-      // 下載影片 blob 存進 IndexedDB
       const videoRes = await fetch(videoMedia.url);
       if (!videoRes.ok) throw new Error('影片下載失敗');
       const blob = await videoRes.blob();
       await saveVideoBlob(videoId, blob);
 
-      // 從影片 blob 擷取第一幀作為縮圖
-      const thumbnail = await captureVideoThumbnail(blob);
-
       const newVideo = {
         id: videoId,
         title: autoTitle,
         author: '',
-        thumbnail,
+        thumbnail: null,
         igUrl: url.trim(),
       };
 
@@ -144,11 +147,7 @@ export default function HomeScreen({ navigation }) {
                 onLongPress={() => setSelectedVideo(item)}
                 delayLongPress={500}
               >
-                {item.thumbnail ? (
-                  <Image source={{ uri: item.thumbnail }} style={styles.thumbnail} />
-                ) : (
-                  <View style={[styles.thumbnail, styles.thumbnailPlaceholder]} />
-                )}
+                <VideoThumb videoId={item.id} style={styles.thumbnail} />
                 <View style={styles.cardInfo}>
                   <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
                   <Text style={styles.cardAuthor}>{item.author}</Text>
@@ -286,7 +285,7 @@ const styles = StyleSheet.create({
     borderRadius: 12, marginBottom: 12, overflow: 'hidden',
   },
   thumbnail: { width: 100, height: 100 },
-  thumbnailPlaceholder: { backgroundColor: '#2a2a2a' },
+  thumbnailPlaceholder: { backgroundColor: '#2a2a2a', width: 100, height: 100 },
   cardInfo: { flex: 1, padding: 12, justifyContent: 'space-between' },
   cardTitle: { color: '#fff', fontSize: 14, fontWeight: '600', lineHeight: 20 },
   cardAuthor: { color: '#888', fontSize: 12 },
