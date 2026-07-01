@@ -52,8 +52,20 @@ export function AppProvider({ children }) {
     setClips(prev => prev.map(c => c.id === clipId ? { ...c, category } : c));
   }
 
+  function renameCategory(oldName, newName) {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    setCategories(prev => prev.map(c => c === oldName ? trimmed : c));
+    setClips(prev => prev.map(c => c.category === oldName ? { ...c, category: trimmed } : c));
+  }
+
+  function deleteCategory(name) {
+    setCategories(prev => prev.filter(c => c !== name));
+    setClips(prev => prev.map(c => c.category === name ? { ...c, category: null } : c));
+  }
+
   return (
-    <AppContext.Provider value={{ videos, addVideo, deleteVideo, updateVideoTitle, clips, addClip, deleteClip, categories, addCategory, updateClipCategory }}>
+    <AppContext.Provider value={{ videos, addVideo, deleteVideo, updateVideoTitle, clips, addClip, deleteClip, categories, addCategory, renameCategory, deleteCategory, updateClipCategory }}>
       {children}
     </AppContext.Provider>
   );
