@@ -7,6 +7,38 @@ import {
   ActivityIndicator, SafeAreaView,
 } from 'react-native';
 
+function captureVideoThumbnail(blob) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement('video');
+    video.playsInline = true;
+    video.muted = true;
+    video.preload = 'metadata';
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = Math.min(1, video.duration * 0.1);
+    }, { once: true });
+    video.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200;
+        canvas.height = 200;
+        const ctx = canvas.getContext('2d');
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const size = Math.min(vw, vh);
+        ctx.drawImage(video, (vw - size) / 2, (vh - size) / 2, size, size, 0, 0, 200, 200);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } catch {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      }
+    }, { once: true });
+    video.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(null); }, { once: true });
+    video.src = url;
+  });
+}
+
 const RAPIDAPI_KEY = '87f82569eamsh557c88add7b216dp1edbc2jsn1ca09d91cb6f';
 const RAPIDAPI_HOST = 'instagram-post-reels-stories-downloader-api.p.rapidapi.com';
 
@@ -59,21 +91,8 @@ export default function HomeScreen({ navigation }) {
       const blob = await videoRes.blob();
       await saveVideoBlob(videoId, blob);
 
-      // 下載縮圖轉成 base64 永久保存
-      let thumbnail = null;
-      if (thumbUrl) {
-        try {
-          const thumbRes = await fetch(thumbUrl);
-          if (thumbRes.ok) {
-            const thumbBlob = await thumbRes.blob();
-            thumbnail = await new Promise(resolve => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
-              reader.readAsDataURL(thumbBlob);
-            });
-          }
-        } catch {}
-      }
+      // 從影片 blob 擷取第一幀作為縮圖
+      const thumbnail = await captureVideoThumbnail(blob);
 
       const newVideo = {
         id: videoId,
