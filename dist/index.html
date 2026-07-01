@@ -3,13 +3,41 @@
   <head>
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="WorkWorkWorki" />
+    <meta name="theme-color" content="#0d0d0d" />
+    <meta name="color-scheme" content="dark" />
     <link rel="apple-touch-icon" href="/assets/icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <title>WorkWorkWorki</title>
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+      :root { color-scheme: dark; }
+      html {
+        width: 100%;
+        height: 100%;
+        height: -webkit-fill-available;
+        background-color: #0d0d0d;
+      }
+      body {
+        width: 100%;
+        height: 100%;
+        min-height: -webkit-fill-available;
+        background-color: #0d0d0d;
+        overflow: hidden;
+      }
+      #root {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        display: flex;
+        flex-direction: column;
+        background-color: #0d0d0d;
+        overflow: hidden;
+      }
+      video { -webkit-playsinline: true; }
+    </style>
     <script>
       document.addEventListener('DOMContentLoaded', function () {
         function fixVideos() {
@@ -27,33 +55,10 @@
         }
       });
     </script>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
-    <style id="expo-reset">
-      /* These styles make the body full-height */
-      html,
-      body {
-        height: 100%;
-      }
-      /* These styles disable body scrolling if you are using <ScrollView> */
-      body {
-        overflow: hidden;
-      }
-      /* These styles make the root element full-height */
-      #root {
-        display: flex;
-        height: 100%;
-        flex: 1;
-      }
-    </style>
   <link rel="icon" href="/favicon.ico"/></head>
-
   <body>
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
-    <noscript>
-      You need to enable JavaScript to run this app.
-    </noscript>
-    <!-- The root element for your Expo app. -->
+    <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-  <script src="/_expo/static/js/web/index-375463ecc1c8396459110de30de1b5a5.js" defer></script>
+  <script src="/_expo/static/js/web/index-55ef652a4cb972a92ec07fc80e76403f.js" defer></script>
 </body>
 </html>

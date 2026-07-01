@@ -11,11 +11,13 @@ const RAPIDAPI_KEY = '87f82569eamsh557c88add7b216dp1edbc2jsn1ca09d91cb6f';
 const RAPIDAPI_HOST = 'instagram-post-reels-stories-downloader-api.p.rapidapi.com';
 
 export default function HomeScreen({ navigation }) {
-  const { videos, addVideo, deleteVideo } = useApp();
+  const { videos, addVideo, deleteVideo, updateVideoTitle } = useApp();
   const [modalVisible, setModalVisible] = useState(false);
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [renamingVideo, setRenamingVideo] = useState(null);
+  const [renameText, setRenameText] = useState('');
 
   async function handleImport() {
     if (!url.trim()) return;
@@ -47,8 +49,9 @@ export default function HomeScreen({ navigation }) {
 
       if (!videoMedia?.url) throw new Error('找不到影片連結');
 
-      const thumb = results.find(m => m.type?.includes('image'))?.url ?? videoMedia.thumb ?? null;
+      const thumbUrl = results.find(m => m.type?.includes('image'))?.url ?? videoMedia.thumb ?? null;
       const videoId = Date.now().toString();
+      const autoTitle = `動作 ${videos.length + 1}`;
 
       // 下載影片 blob 存進 IndexedDB
       const videoRes = await fetch(videoMedia.url);
@@ -56,11 +59,27 @@ export default function HomeScreen({ navigation }) {
       const blob = await videoRes.blob();
       await saveVideoBlob(videoId, blob);
 
+      // 下載縮圖轉成 base64 永久保存
+      let thumbnail = null;
+      if (thumbUrl) {
+        try {
+          const thumbRes = await fetch(thumbUrl);
+          if (thumbRes.ok) {
+            const thumbBlob = await thumbRes.blob();
+            thumbnail = await new Promise(resolve => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.readAsDataURL(thumbBlob);
+            });
+          }
+        } catch {}
+      }
+
       const newVideo = {
         id: videoId,
-        title: '未命名動作',
+        title: autoTitle,
         author: '',
-        thumbnail: thumb,
+        thumbnail,
         igUrl: url.trim(),
       };
 
@@ -129,6 +148,16 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.menuBox}>
               <Text style={styles.menuTitle} numberOfLines={1}>{selectedVideo?.title}</Text>
               <TouchableOpacity
+                style={styles.menuBtn}
+                onPress={() => {
+                  setRenameText(selectedVideo.title);
+                  setRenamingVideo(selectedVideo);
+                  setSelectedVideo(null);
+                }}
+              >
+                <Text style={styles.menuBtnText}>Rename</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={styles.menuDeleteBtn}
                 onPress={async () => {
                   await deleteVideoBlob(selectedVideo.id);
@@ -137,6 +166,33 @@ export default function HomeScreen({ navigation }) {
                 }}
               >
                 <Text style={styles.menuDeleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Rename 視窗 */}
+        <Modal visible={!!renamingVideo} transparent animationType="fade">
+          <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setRenamingVideo(null)}>
+            <View style={styles.menuBox}>
+              <Text style={styles.menuTitle}>重新命名</Text>
+              <TextInput
+                style={styles.renameInput}
+                value={renameText}
+                onChangeText={setRenameText}
+                autoFocus
+                placeholder="輸入新名稱"
+                placeholderTextColor="#555"
+              />
+              <TouchableOpacity
+                style={styles.menuBtn}
+                onPress={() => {
+                  const t = renameText.trim() || '未命名動作';
+                  updateVideoTitle(renamingVideo.id, t);
+                  setRenamingVideo(null);
+                }}
+              >
+                <Text style={styles.menuBtnText}>確認</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -257,9 +313,19 @@ const styles = StyleSheet.create({
     color: '#888', fontSize: 13, paddingHorizontal: 20,
     paddingTop: 16, paddingBottom: 12,
   },
+  menuBtn: {
+    borderTopWidth: 1, borderTopColor: '#2a2a2a',
+    padding: 16, alignItems: 'center',
+  },
+  menuBtnText: { color: '#888', fontSize: 16, fontWeight: '600' },
   menuDeleteBtn: {
     borderTopWidth: 1, borderTopColor: '#2a2a2a',
     padding: 16, alignItems: 'center',
   },
   menuDeleteText: { color: '#ef4444', fontSize: 16, fontWeight: '600' },
+  renameInput: {
+    backgroundColor: '#2a2a2a', color: '#fff',
+    marginHorizontal: 16, marginBottom: 8,
+    borderRadius: 8, padding: 12, fontSize: 14,
+  },
 });

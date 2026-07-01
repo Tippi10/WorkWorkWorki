@@ -1,4 +1,4 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { AppProvider } from './context/AppContext';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -32,7 +32,7 @@ const icons = {
 export default function App() {
   return (
     <AppProvider>
-    <NavigationContainer>
+    <NavigationContainer theme={{ ...DarkTheme, colors: { ...DarkTheme.colors, background: '#0d0d0d', card: '#1a1a1a' } }}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           tabBarIcon: ({ focused }) => (
