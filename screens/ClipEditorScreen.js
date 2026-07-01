@@ -34,9 +34,18 @@ export default function ClipEditorScreen({ route, navigation }) {
   const [durationMs, setDurationMs] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Scrubber state
+  const isScrubbingRef = useRef(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubMs, setScrubMs] = useState(0);
+  const wasPlayingRef = useRef(false);
+  const scrubBarWidthRef = useRef(1);
+
   useEffect(() => {
     const id = setInterval(() => {
-      setCurrentMs((player.currentTime ?? 0) * 1000);
+      if (!isScrubbingRef.current) {
+        setCurrentMs((player.currentTime ?? 0) * 1000);
+      }
       setDurationMs((player.duration ?? 1) * 1000);
       setIsPlaying(player.playing ?? false);
     }, 100);
@@ -60,6 +69,33 @@ export default function ClipEditorScreen({ route, navigation }) {
       document.removeEventListener('play', applyInline, true);
     };
   }, []);
+
+  const displayMs = isScrubbing ? scrubMs : currentMs;
+  const safeDuration = Math.max(durationMs, 1);
+
+  function seekFromX(locationX) {
+    const w = scrubBarWidthRef.current;
+    const percent = Math.max(0, Math.min(locationX / w, 1));
+    const targetMs = percent * safeDuration;
+    setScrubMs(targetMs);
+    const targetSec = targetMs / 1000;
+    player.seekBy(targetSec - (player.currentTime ?? 0));
+  }
+
+  function onScrubStart(locationX) {
+    isScrubbingRef.current = true;
+    setIsScrubbing(true);
+    setScrubMs(currentMs);
+    wasPlayingRef.current = player.playing ?? false;
+    if (player.playing) player.pause();
+    seekFromX(locationX);
+  }
+
+  function onScrubEnd() {
+    isScrubbingRef.current = false;
+    setIsScrubbing(false);
+    if (wasPlayingRef.current) player.play();
+  }
 
   const [videoTitle, setVideoTitle] = useState(video.title);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -87,14 +123,14 @@ export default function ClipEditorScreen({ route, navigation }) {
   const [newCatName, setNewCatName] = useState('');
 
   function handleMarkStart() {
-    setMarkStart(currentMs);
+    setMarkStart(displayMs);
     setMarkEnd(null);
   }
 
   function handleMarkEnd() {
     if (markStart === null) { Alert.alert('請先標記開始點'); return; }
-    if (currentMs <= markStart) { Alert.alert('結束點必須在開始點之後'); return; }
-    setMarkEnd(currentMs);
+    if (displayMs <= markStart) { Alert.alert('結束點必須在開始點之後'); return; }
+    setMarkEnd(displayMs);
   }
 
   function handleSaveClip() {
@@ -196,20 +232,36 @@ export default function ClipEditorScreen({ route, navigation }) {
 
       {/* 時間 */}
       <View style={styles.timeRow}>
-        <Text style={styles.timeText}>{formatTime(currentMs)}</Text>
+        <Text style={styles.timeText}>{formatTime(displayMs)}</Text>
         <Text style={styles.timeSep}>/</Text>
-        <Text style={styles.timeDim}>{formatTime(durationMs)}</Text>
+        <Text style={styles.timeDim}>{formatTime(safeDuration)}</Text>
       </View>
 
-      {/* 進度條 */}
-      <View style={styles.progressBg}>
-        <View style={[styles.progressFill, { width: `${(currentMs / durationMs) * 100}%` }]} />
+      {/* 可拖動時間軸 */}
+      <View
+        onLayout={e => { scrubBarWidthRef.current = e.nativeEvent.layout.width; }}
+        onStartShouldSetResponder={() => true}
+        onMoveShouldSetResponder={() => true}
+        onResponderGrant={e => onScrubStart(e.nativeEvent.locationX)}
+        onResponderMove={e => seekFromX(e.nativeEvent.locationX)}
+        onResponderRelease={onScrubEnd}
+        onResponderTerminate={onScrubEnd}
+        style={styles.scrubArea}
+      >
+        {/* 背景軌道 */}
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${(displayMs / safeDuration) * 100}%` }]} />
+        </View>
+        {/* 開始標記 */}
         {markStart !== null && (
-          <View style={[styles.marker, styles.markerStart, { left: `${(markStart / durationMs) * 100}%` }]} />
+          <View style={[styles.marker, styles.markerStart, { left: `${(markStart / safeDuration) * 100}%` }]} />
         )}
+        {/* 結束標記 */}
         {markEnd !== null && (
-          <View style={[styles.marker, styles.markerEnd, { left: `${(markEnd / durationMs) * 100}%` }]} />
+          <View style={[styles.marker, styles.markerEnd, { left: `${(markEnd / safeDuration) * 100}%` }]} />
         )}
+        {/* 拖動把手 */}
+        <View style={[styles.scrubThumb, { left: `${(displayMs / safeDuration) * 100}%` }]} />
       </View>
 
       {/* 播放控制 */}
@@ -349,14 +401,40 @@ const styles = StyleSheet.create({
   timeText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   timeSep: { color: '#555', marginHorizontal: 4 },
   timeDim: { color: '#555', fontSize: 14 },
-  progressBg: {
-    height: 4, backgroundColor: '#2a2a2a',
-    marginHorizontal: 16, marginTop: 8, borderRadius: 2, position: 'relative',
+
+  scrubArea: {
+    height: 32,
+    marginHorizontal: 16,
+    marginTop: 8,
+    justifyContent: 'center',
+  },
+  progressTrack: {
+    height: 4,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 2,
+    overflow: 'hidden',
   },
   progressFill: { height: 4, backgroundColor: '#a78bfa', borderRadius: 2 },
-  marker: { position: 'absolute', top: -4, width: 3, height: 12, borderRadius: 2 },
+  marker: {
+    position: 'absolute',
+    top: '50%',
+    width: 3, height: 16, borderRadius: 2,
+    transform: [{ translateY: -8 }],
+  },
   markerStart: { backgroundColor: '#34d399' },
   markerEnd: { backgroundColor: '#f87171' },
+  scrubThumb: {
+    position: 'absolute',
+    top: '50%',
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: '#a78bfa',
+    transform: [{ translateX: -8 }, { translateY: -8 }],
+    shadowColor: '#a78bfa',
+    shadowOpacity: 0.6,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+
   playBtn: {
     alignSelf: 'center', marginTop: 16,
     backgroundColor: '#1e1e1e', paddingHorizontal: 32, paddingVertical: 12, borderRadius: 30,
