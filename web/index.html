@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>WorkWorkWorki</title>
+    <style id="expo-reset">
+      html, body { height: 100%; }
+      body { overflow: hidden; }
+      #root { display: flex; height: 100%; flex: 1; }
+      video { -webkit-playsinline: true; }
+    </style>
+    <script>
+      // Force all videos to play inline (prevent iOS Safari fullscreen)
+      document.addEventListener('DOMContentLoaded', function () {
+        function fixVideos() {
+          document.querySelectorAll('video').forEach(function (v) {
+            v.setAttribute('playsinline', '');
+            v.setAttribute('webkit-playsinline', '');
+            v.playsInline = true;
+          });
+        }
+        fixVideos();
+        var observer = new MutationObserver(fixVideos);
+        observer.observe(document.body, { childList: true, subtree: true });
+        document.addEventListener('play', fixVideos, true);
+      });
+    </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

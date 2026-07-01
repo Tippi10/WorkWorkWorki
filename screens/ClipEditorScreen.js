@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, Platform } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   TextInput, FlatList, Alert, SafeAreaView,
@@ -6,7 +6,6 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useApp } from '../context/AppContext';
-import { useEffect } from 'react';
 
 const { width, height } = Dimensions.get('window');
 const VIDEO_HEIGHT = Math.min(width * (16 / 9), height * 0.4);
@@ -34,6 +33,24 @@ export default function ClipEditorScreen({ route, navigation }) {
     }, 100);
     return () => clearInterval(id);
   }, [player]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const applyInline = () => {
+      document.querySelectorAll('video').forEach(v => {
+        v.setAttribute('playsinline', '');
+        v.setAttribute('webkit-playsinline', '');
+        v.playsInline = true;
+      });
+    };
+    applyInline();
+    const interval = setInterval(applyInline, 300);
+    document.addEventListener('play', applyInline, true);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('play', applyInline, true);
+    };
+  }, []);
 
   const [markStart, setMarkStart] = useState(null);
   const [markEnd, setMarkEnd] = useState(null);
