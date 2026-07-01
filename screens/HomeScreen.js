@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { saveVideoBlob } from '../utils/videoDB';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   Modal, TextInput, Alert, FlatList, Image,
@@ -46,13 +47,19 @@ export default function HomeScreen({ navigation }) {
       if (!videoMedia?.url) throw new Error('找不到影片連結');
 
       const thumb = results.find(m => m.type?.includes('image'))?.url ?? videoMedia.thumb ?? null;
+      const videoId = Date.now().toString();
+
+      // 下載影片 blob 存進 IndexedDB
+      const videoRes = await fetch(videoMedia.url);
+      if (!videoRes.ok) throw new Error('影片下載失敗');
+      const blob = await videoRes.blob();
+      await saveVideoBlob(videoId, blob);
 
       const newVideo = {
-        id: Date.now().toString(),
+        id: videoId,
         title: '未命名動作',
         author: '',
         thumbnail: thumb,
-        downloadUrl: videoMedia.url,
         igUrl: url.trim(),
       };
 

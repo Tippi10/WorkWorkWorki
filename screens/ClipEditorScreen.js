@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useApp } from '../context/AppContext';
+import { getVideoBlob } from '../utils/videoDB';
 
 const { width, height } = Dimensions.get('window');
 const VIDEO_HEIGHT = Math.min(width * (16 / 9), height * 0.4);
@@ -20,7 +21,15 @@ export default function ClipEditorScreen({ route, navigation }) {
   const { video } = route.params;
   const { addClip, categories, addCategory, updateClipCategory } = useApp();
 
-  const player = useVideoPlayer(video.downloadUrl, p => { p.loop = false; });
+  const [videoUrl, setVideoUrl] = useState(null);
+
+  useEffect(() => {
+    getVideoBlob(video.id).then(blob => {
+      if (blob) setVideoUrl(URL.createObjectURL(blob));
+    });
+  }, [video.id]);
+
+  const player = useVideoPlayer(videoUrl, p => { p.loop = false; });
   const [currentMs, setCurrentMs] = useState(0);
   const [durationMs, setDurationMs] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
