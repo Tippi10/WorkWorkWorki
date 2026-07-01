@@ -1,4 +1,4 @@
-# WorkWorkWorki 💪
+# WorkWorkWorki
 
 健身動作收藏 PWA——從 Instagram Reels 匯入影片，剪輯、分類、排課、追蹤體能進度。
 
