@@ -28,6 +28,14 @@ export function AppProvider({ children }) {
     setVideos(prev => [video, ...prev]);
   }
 
+  function deleteVideo(videoId) {
+    setVideos(prev => prev.filter(v => v.id !== videoId));
+  }
+
+  function updateVideoTitle(videoId, title) {
+    setVideos(prev => prev.map(v => v.id === videoId ? { ...v, title } : v));
+  }
+
   function addClip(clip) {
     setClips(prev => [...prev, clip]);
   }
@@ -45,7 +53,7 @@ export function AppProvider({ children }) {
   }
 
   return (
-    <AppContext.Provider value={{ videos, addVideo, clips, addClip, deleteClip, categories, addCategory, updateClipCategory }}>
+    <AppContext.Provider value={{ videos, addVideo, deleteVideo, updateVideoTitle, clips, addClip, deleteClip, categories, addCategory, updateClipCategory }}>
       {children}
     </AppContext.Provider>
   );

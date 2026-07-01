@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { saveVideoBlob } from '../utils/videoDB';
+import { saveVideoBlob, deleteVideoBlob } from '../utils/videoDB';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Modal, TextInput, Alert, FlatList, Image,
+  Modal, TextInput, FlatList, Image,
   ActivityIndicator, SafeAreaView,
 } from 'react-native';
 
@@ -11,10 +11,11 @@ const RAPIDAPI_KEY = '87f82569eamsh557c88add7b216dp1edbc2jsn1ca09d91cb6f';
 const RAPIDAPI_HOST = 'instagram-post-reels-stories-downloader-api.p.rapidapi.com';
 
 export default function HomeScreen({ navigation }) {
-  const { videos, addVideo } = useApp();
+  const { videos, addVideo, deleteVideo } = useApp();
   const [modalVisible, setModalVisible] = useState(false);
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState(null);
 
   async function handleImport() {
     if (!url.trim()) return;
@@ -99,7 +100,12 @@ export default function HomeScreen({ navigation }) {
             keyExtractor={item => item.id}
             contentContainerStyle={{ padding: 16 }}
             renderItem={({ item }) => (
-              <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('ClipEditor', { video: item })}>
+              <TouchableOpacity
+                style={styles.card}
+                onPress={() => navigation.navigate('ClipEditor', { video: item })}
+                onLongPress={() => setSelectedVideo(item)}
+                delayLongPress={500}
+              >
                 {item.thumbnail ? (
                   <Image source={{ uri: item.thumbnail }} style={styles.thumbnail} />
                 ) : (
@@ -116,6 +122,25 @@ export default function HomeScreen({ navigation }) {
             )}
           />
         )}
+
+        {/* 長按選單 */}
+        <Modal visible={!!selectedVideo} transparent animationType="fade">
+          <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setSelectedVideo(null)}>
+            <View style={styles.menuBox}>
+              <Text style={styles.menuTitle} numberOfLines={1}>{selectedVideo?.title}</Text>
+              <TouchableOpacity
+                style={styles.menuDeleteBtn}
+                onPress={async () => {
+                  await deleteVideoBlob(selectedVideo.id);
+                  deleteVideo(selectedVideo.id);
+                  setSelectedVideo(null);
+                }}
+              >
+                <Text style={styles.menuDeleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* 貼連結的 Modal */}
         <Modal visible={modalVisible} transparent animationType="slide">
@@ -219,4 +244,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#a78bfa', alignItems: 'center',
   },
   confirmBtnText: { color: '#fff', fontWeight: '600' },
+
+  menuOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  menuBox: {
+    backgroundColor: '#1a1a1a', borderRadius: 16,
+    width: 260, overflow: 'hidden',
+  },
+  menuTitle: {
+    color: '#888', fontSize: 13, paddingHorizontal: 20,
+    paddingTop: 16, paddingBottom: 12,
+  },
+  menuDeleteBtn: {
+    borderTopWidth: 1, borderTopColor: '#2a2a2a',
+    padding: 16, alignItems: 'center',
+  },
+  menuDeleteText: { color: '#ef4444', fontSize: 16, fontWeight: '600' },
 });

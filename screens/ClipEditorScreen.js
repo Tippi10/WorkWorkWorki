@@ -19,7 +19,7 @@ function formatTime(ms) {
 
 export default function ClipEditorScreen({ route, navigation }) {
   const { video } = route.params;
-  const { addClip, categories, addCategory, updateClipCategory } = useApp();
+  const { addClip, categories, addCategory, updateClipCategory, updateVideoTitle } = useApp();
 
   const [videoUrl, setVideoUrl] = useState(null);
 
@@ -60,6 +60,9 @@ export default function ClipEditorScreen({ route, navigation }) {
       document.removeEventListener('play', applyInline, true);
     };
   }, []);
+
+  const [videoTitle, setVideoTitle] = useState(video.title);
+  const [editingTitle, setEditingTitle] = useState(false);
 
   const [markStart, setMarkStart] = useState(null);
   const [markEnd, setMarkEnd] = useState(null);
@@ -152,7 +155,31 @@ export default function ClipEditorScreen({ route, navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backBtn}>← 返回</Text>
         </TouchableOpacity>
-        <Text style={styles.topTitle} numberOfLines={1}>{video.title}</Text>
+        {editingTitle ? (
+          <TextInput
+            style={styles.titleInput}
+            value={videoTitle}
+            onChangeText={setVideoTitle}
+            autoFocus
+            onBlur={() => {
+              setEditingTitle(false);
+              const t = videoTitle.trim() || '未命名動作';
+              setVideoTitle(t);
+              updateVideoTitle(video.id, t);
+            }}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              setEditingTitle(false);
+              const t = videoTitle.trim() || '未命名動作';
+              setVideoTitle(t);
+              updateVideoTitle(video.id, t);
+            }}
+          />
+        ) : (
+          <TouchableOpacity onPress={() => setEditingTitle(true)} style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={styles.topTitle} numberOfLines={1}>{videoTitle}</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={handleDone}>
           <Text style={styles.doneBtn}>完成</Text>
         </TouchableOpacity>
@@ -310,7 +337,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#1e1e1e',
   },
   backBtn: { color: '#888', fontSize: 14 },
-  topTitle: { color: '#fff', fontSize: 14, fontWeight: '600', flex: 1, textAlign: 'center', marginHorizontal: 8 },
+  topTitle: { color: '#fff', fontSize: 14, fontWeight: '600', textAlign: 'center', marginHorizontal: 8 },
+  titleInput: {
+    flex: 1, color: '#fff', fontSize: 14, fontWeight: '600',
+    textAlign: 'center', marginHorizontal: 8,
+    borderBottomWidth: 1, borderBottomColor: '#a78bfa', paddingVertical: 2,
+  },
   doneBtn: { color: '#a78bfa', fontSize: 14, fontWeight: '700' },
   video: { width: '100%', height: VIDEO_HEIGHT, backgroundColor: '#000' },
   timeRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10 },
