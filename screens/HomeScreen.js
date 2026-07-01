@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 
 const RAPIDAPI_KEY = '87f82569eamsh557c88add7b216dp1edbc2jsn1ca09d91cb6f';
+const RAPIDAPI_HOST = 'instagram-post-reels-stories-downloader-api.p.rapidapi.com';
 
 export default function HomeScreen({ navigation }) {
   const { videos, addVideo } = useApp();
@@ -20,27 +21,38 @@ export default function HomeScreen({ navigation }) {
     try {
       const encoded = encodeURIComponent(url.trim());
       const res = await fetch(
-        `https://instagram-reels-downloader-api.p.rapidapi.com/download?url=${encoded}`,
+        `https://${RAPIDAPI_HOST}/instagram/?url=${encoded}`,
         {
           headers: {
             'Content-Type': 'application/json',
-            'x-rapidapi-host': 'instagram-reels-downloader-api.p.rapidapi.com',
+            'x-rapidapi-host': RAPIDAPI_HOST,
             'x-rapidapi-key': RAPIDAPI_KEY,
           },
         }
       );
       const json = await res.json();
-      if (!json.success) throw new Error('API 回傳失敗');
+      console.log('API response:', JSON.stringify(json).slice(0, 500));
 
-      const data = json.data;
-      const videoMedia = data.medias?.find(m => m.type === 'video');
+      if (!json.status || !json.result?.length) {
+        throw new Error('API 回傳失敗');
+      }
+
+      const results = json.result;
+      const videoMedia =
+        results.find(m => m.type?.includes('video')) ??
+        results.find(m => m.url?.includes('.mp4')) ??
+        results[0];
+
+      if (!videoMedia?.url) throw new Error('找不到影片連結');
+
+      const thumb = results.find(m => m.type?.includes('image'))?.url ?? videoMedia.thumb ?? null;
 
       const newVideo = {
-        id: data.shortcode,
-        title: data.title || '未命名動作',
-        author: data.author || '',
-        thumbnail: data.thumbnail,
-        downloadUrl: videoMedia?.url || '',
+        id: Date.now().toString(),
+        title: '未命名動作',
+        author: '',
+        thumbnail: thumb,
+        downloadUrl: videoMedia.url,
         igUrl: url.trim(),
       };
 
