@@ -1,8 +1,52 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, SafeAreaView, Modal, Dimensions, TextInput } from 'react-native';
+import { getVideoBlob } from '../utils/videoDB';
 
 const FOLDER_SIZE = (Dimensions.get('window').width - 16 * 2 - 12) / 2;
 import { useApp } from '../context/AppContext';
+
+function captureVideoThumbnail(blob) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement('video');
+    video.playsInline = true;
+    video.muted = true;
+    video.preload = 'metadata';
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = Math.min(1, video.duration * 0.1);
+    }, { once: true });
+    video.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200; canvas.height = 200;
+        const ctx = canvas.getContext('2d');
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const size = Math.min(vw, vh);
+        ctx.drawImage(video, (vw - size) / 2, (vh - size) / 2, size, size, 0, 0, 200, 200);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } catch { URL.revokeObjectURL(url); resolve(null); }
+    }, { once: true });
+    video.addEventListener('error', () => { URL.revokeObjectURL(url); resolve(null); }, { once: true });
+    video.src = url;
+  });
+}
+
+function FolderThumb({ clip, style }) {
+  const [thumb, setThumb] = useState(clip?.thumbnail ?? null);
+
+  useEffect(() => {
+    if (thumb || !clip?.videoId) return;
+    getVideoBlob(clip.videoId).then(async blob => {
+      if (!blob) return;
+      const dataUrl = await captureVideoThumbnail(blob);
+      if (dataUrl) setThumb(dataUrl);
+    });
+  }, [clip?.videoId]);
+
+  if (thumb) return <Image source={{ uri: thumb }} style={style} />;
+  return <View style={[style, styles.folderThumbPlaceholder]} />;
+}
 
 function formatTime(ms) {
   const s = Math.floor(ms / 1000);
@@ -53,11 +97,7 @@ export default function DepotScreen() {
               onLongPress={() => setSelectedCat(cat)}
               delayLongPress={500}
             >
-              {catClips[0]?.thumbnail ? (
-                <Image source={{ uri: catClips[0].thumbnail }} style={styles.folderThumb} />
-              ) : (
-                <View style={[styles.folderThumb, styles.folderThumbPlaceholder]} />
-              )}
+              <FolderThumb clip={catClips[catClips.length - 1]} style={styles.folderThumb} />
               <View style={styles.folderOverlay} />
               <Text style={styles.folderName}>{cat}</Text>
               <Text style={styles.folderCount}>{catClips.length} 個動作</Text>
